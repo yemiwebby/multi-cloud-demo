@@ -61,6 +61,17 @@ jobs:
             aws configure set default.region $AWS_DEFAULT_REGION
             aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
       - run:
+          name: Create ECR repository if it doesn't exist
+          command: |
+            echo "Checking if ECR repository 'multi-cloud-demo' exists..."
+            if ! aws ecr describe-repositories --repository-names multi-cloud-demo --region $AWS_DEFAULT_REGION > /dev/null 2>&1; then
+              echo "Repository doesn't exist. Creating ECR repository..."
+              aws ecr create-repository --repository-name multi-cloud-demo --region $AWS_DEFAULT_REGION
+              echo "ECR repository 'multi-cloud-demo' created successfully!"
+            else
+              echo "ECR repository 'multi-cloud-demo' already exists."
+            fi
+      - run:
           name: Build and push Docker image to ECR
           command: |
             DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
