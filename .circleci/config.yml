@@ -136,6 +136,22 @@ jobs:
     steps:
       - checkout
       - run:
+          name: Install AWS CLI
+          command: |
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
+            echo 'export PATH=/usr/local/bin:$PATH' >> $BASH_ENV
+            source $BASH_ENV
+            aws --version
+      - run:
+          name: Configure AWS
+          command: |
+            source $BASH_ENV
+            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+            aws configure set default.region $AWS_DEFAULT_REGION
+      - run:
           name: Replace placeholders in task definition
           command: |
             sed -i "s/{AWS_ACCOUNT_ID}/$AWS_ACCOUNT_ID/g" aws/task-definition.json
