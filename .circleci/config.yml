@@ -159,6 +159,22 @@ jobs:
             sed -i "s/{AWS_REGION}/$AWS_DEFAULT_REGION/g" aws/task-definition.json
             sed -i "s/{CIRCLE_SHA1}/${CIRCLE_SHA1}/g" aws/task-definition.json
       - run:
+          name: Create ECS cluster if it doesn't exist
+          command: |
+            source $BASH_ENV
+            echo "Checking if ECS cluster 'multi-cloud-cluster' exists..."
+            if ! aws ecs describe-clusters --clusters multi-cloud-cluster --region $AWS_DEFAULT_REGION --query 'clusters[0].status' --output text 2>/dev/null | grep -q "ACTIVE"; then
+              echo "Cluster doesn't exist. Creating ECS cluster..."
+              aws ecs create-cluster --cluster-name multi-cloud-cluster --region $AWS_DEFAULT_REGION
+              echo "ECS cluster 'multi-cloud-cluster' created successfully!"
+              
+              # Wait a moment for cluster to be ready
+              echo "Waiting for cluster to be active..."
+              sleep 10
+            else
+              echo "ECS cluster 'multi-cloud-cluster' already exists and is active."
+            fi
+      - run:
           name: Register task definition
           command: |
             source $BASH_ENV
