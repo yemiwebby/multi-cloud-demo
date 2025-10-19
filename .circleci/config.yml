@@ -139,13 +139,13 @@ workflows:
             branches:
               only: main
           context: aws-context
-          when: << parameters.deploy-aws >>
+          when: << pipeline.parameters.deploy-aws >>
 
       - deploy-to-aws:
           requires:
             - build-and-push-aws
           context: aws-context
-          when: << parameters.deploy-aws >>
+          when: << pipeline.parameters.deploy-aws >>
 
       # GCP Pipeline
       - build-and-push-gcp:
@@ -155,13 +155,13 @@ workflows:
             branches:
               only: main
           context: gcp-context
-          when: << parameters.deploy-gcp >>
+          when: << pipeline.parameters.deploy-gcp >>
 
       - deploy-to-gcp:
           requires:
             - build-and-push-gcp
           context: gcp-context
-          when: << parameters.deploy-gcp >>
+          when: << pipeline.parameters.deploy-gcp >>
 
       # Verification
       - verify-deployments:
@@ -170,5 +170,5 @@ workflows:
             - deploy-to-gcp
           when:
             and:
-              - << parameters.deploy-aws >>
-              - << parameters.deploy-gcp >>
+              - << pipeline.parameters.deploy-aws >>
+              - << pipeline.parameters.deploy-gcp >>
