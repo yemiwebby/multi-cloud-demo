@@ -66,6 +66,7 @@ app.use((req, res) => {
 });
 
 if (require.main === module) {
+  // App listen
   app.listen(port, "0.0.0.0", () => {
     console.log(`Multi-cloud demo app running on port ${port}`);
     console.log(`Cloud Provider: ${cloudProvider}`);

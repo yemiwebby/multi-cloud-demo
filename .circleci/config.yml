@@ -150,11 +150,9 @@ workflows:
           filters:
             branches:
               only: main
-          context: aws-context
       - deploy-to-aws:
           requires:
             - build-and-push-aws
-          context: aws-context
 
   # GCP deployment workflow
   gcp-deploy:
@@ -167,11 +165,9 @@ workflows:
           filters:
             branches:
               only: main
-          context: gcp-context
       - deploy-to-gcp:
           requires:
             - build-and-push-gcp
-          context: gcp-context
 
   # Verification workflow (only runs when both AWS and GCP are enabled)
   verification:
@@ -187,22 +183,18 @@ workflows:
           filters:
             branches:
               only: main
-          context: aws-context
       - deploy-to-aws:
           requires:
             - build-and-push-aws
-          context: aws-context
       - build-and-push-gcp:
           requires:
             - test
           filters:
             branches:
               only: main
-          context: gcp-context
       - deploy-to-gcp:
           requires:
             - build-and-push-gcp
-          context: gcp-context
       - verify-deployments:
           requires:
             - deploy-to-aws
