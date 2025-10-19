@@ -74,7 +74,7 @@ jobs:
           tag: "latest,${CIRCLE_SHA1}"
           dockerfile: Dockerfile
           registry-url: gcr.io
-          extra-build-args: |
+          extra_build_args: |
             --build-arg DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
             --build-arg APP_VERSION=${CIRCLE_SHA1:0:7}
       - gcp-gcr/push-image:
