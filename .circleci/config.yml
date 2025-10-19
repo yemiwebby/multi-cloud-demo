@@ -42,7 +42,7 @@ jobs:
 
   build-and-push-aws:
     docker:
-      - image: cimg/aws:2023.10
+      - image: cimg/node:18.20
     steps:
       - checkout
       - setup_remote_docker
@@ -83,7 +83,7 @@ jobs:
 
   deploy-to-aws:
     docker:
-      - image: cimg/aws:2023.10
+      - image: cimg/node:18.20
     steps:
       - checkout
       - run:
@@ -118,7 +118,7 @@ jobs:
 
   verify-deployments:
     docker:
-      - image: cimg/base:2023.10
+      - image: cimg/node:18.20
     steps:
       - run:
           name: Verify AWS deployment
