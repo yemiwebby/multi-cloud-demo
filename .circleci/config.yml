@@ -63,7 +63,7 @@ jobs:
 
   build-and-push-gcp:
     docker:
-      - image: cimg/gcloud:latest
+      - image: cimg/node:18.20
     steps:
       - checkout
       - setup_remote_docker
@@ -100,7 +100,7 @@ jobs:
 
   deploy-to-gcp:
     docker:
-      - image: cimg/gcloud:latest
+      - image: cimg/node:18.20
     steps:
       - checkout
       - run:
