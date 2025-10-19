@@ -47,6 +47,15 @@ jobs:
       - checkout
       - setup_remote_docker
       - run:
+          name: Debug AWS environment variables
+          command: |
+            echo "=== AWS Environment Variables Debug ==="
+            echo "AWS_ACCOUNT_ID: $AWS_ACCOUNT_ID"
+            echo "AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION"
+            echo "AWS_ACCESS_KEY_ID length: ${#AWS_ACCESS_KEY_ID}"
+            echo "AWS_SECRET_ACCESS_KEY length: ${#AWS_SECRET_ACCESS_KEY}"
+            echo "=== End AWS Debug ==="
+      - run:
           name: Set build arguments
           command: |
             echo "export DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $BASH_ENV
