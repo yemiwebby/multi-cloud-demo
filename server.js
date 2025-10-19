@@ -65,7 +65,6 @@ app.use((req, res) => {
   });
 });
 
-// Only start server if this file is run directly
 if (require.main === module) {
   app.listen(port, "0.0.0.0", () => {
     console.log(`Multi-cloud demo app running on port ${port}`);
