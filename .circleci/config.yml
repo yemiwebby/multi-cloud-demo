@@ -127,11 +127,16 @@ jobs:
             echo "GCP deployment verification completed"
 
 workflows:
-  multi-cloud-deploy:
+  # Always run tests
+  test-workflow:
     jobs:
       - test
 
-      # AWS Pipeline
+  # AWS deployment workflow
+  aws-deploy:
+    when: << pipeline.parameters.deploy-aws >>
+    jobs:
+      - test
       - build-and-push-aws:
           requires:
             - test
@@ -139,15 +144,16 @@ workflows:
             branches:
               only: main
           context: aws-context
-          when: << pipeline.parameters.deploy-aws >>
-
       - deploy-to-aws:
           requires:
             - build-and-push-aws
           context: aws-context
-          when: << pipeline.parameters.deploy-aws >>
 
-      # GCP Pipeline
+  # GCP deployment workflow
+  gcp-deploy:
+    when: << pipeline.parameters.deploy-gcp >>
+    jobs:
+      - test
       - build-and-push-gcp:
           requires:
             - test
@@ -155,20 +161,42 @@ workflows:
             branches:
               only: main
           context: gcp-context
-          when: << pipeline.parameters.deploy-gcp >>
-
       - deploy-to-gcp:
           requires:
             - build-and-push-gcp
           context: gcp-context
-          when: << pipeline.parameters.deploy-gcp >>
 
-      # Verification
+  # Verification workflow (only runs when both AWS and GCP are enabled)
+  verification:
+    when:
+      and:
+        - << pipeline.parameters.deploy-aws >>
+        - << pipeline.parameters.deploy-gcp >>
+    jobs:
+      - test
+      - build-and-push-aws:
+          requires:
+            - test
+          filters:
+            branches:
+              only: main
+          context: aws-context
+      - deploy-to-aws:
+          requires:
+            - build-and-push-aws
+          context: aws-context
+      - build-and-push-gcp:
+          requires:
+            - test
+          filters:
+            branches:
+              only: main
+          context: gcp-context
+      - deploy-to-gcp:
+          requires:
+            - build-and-push-gcp
+          context: gcp-context
       - verify-deployments:
           requires:
             - deploy-to-aws
             - deploy-to-gcp
-          when:
-            and:
-              - << pipeline.parameters.deploy-aws >>
-              - << pipeline.parameters.deploy-gcp >>
