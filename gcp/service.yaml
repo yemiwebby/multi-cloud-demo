@@ -1,0 +1,41 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: multi-cloud-demo
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/memory: "512Mi"
+        run.googleapis.com/cpu: "0.25"
+    spec:
+      containerConcurrency: 100
+      containers:
+        - image: gcr.io/{GCP_PROJECT_ID}/multi-cloud-demo:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: CLOUD_PROVIDER
+              value: "GCP"
+            - name: CLOUD_REGION
+              value: "{GCP_REGION}"
+          resources:
+            limits:
+              cpu: 250m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10

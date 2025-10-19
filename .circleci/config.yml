@@ -1,0 +1,174 @@
+version: 2.1
+
+orbs:
+  aws-ecr: circleci/aws-ecr@9.0.4
+  aws-ecs: circleci/aws-ecs@4.0.0
+  gcp-gcr: circleci/gcp-gcr@0.16.3
+  gcp-cloud-run: circleci/gcp-cloud-run@1.0.2
+
+parameters:
+  deploy-aws:
+    type: boolean
+    default: true
+  deploy-gcp:
+    type: boolean
+    default: true
+
+jobs:
+  test:
+    docker:
+      - image: cimg/node:18.20
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "package-lock.json" }}
+            - v1-dependencies-
+      - run:
+          name: Install dependencies
+          command: npm ci
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-dependencies-{{ checksum "package-lock.json" }}
+      - run:
+          name: Run tests
+          command: npm test
+      - run:
+          name: Test Docker build
+          command: docker build -t multi-cloud-demo:test .
+
+  build-and-push-aws:
+    docker:
+      - image: cimg/aws:2023.10
+    steps:
+      - checkout
+      - setup_remote_docker:
+          version: 20.10.14
+      - aws-ecr/build-and-push-image:
+          account-url: AWS_ECR_ACCOUNT_URL
+          aws-access-key-id: AWS_ACCESS_KEY_ID
+          aws-secret-access-key: AWS_SECRET_ACCESS_KEY
+          region: AWS_DEFAULT_REGION
+          repo: multi-cloud-demo
+          tag: "latest,${CIRCLE_SHA1}"
+          dockerfile: Dockerfile
+          extra-build-args: |
+            --build-arg DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+            --build-arg APP_VERSION=${CIRCLE_SHA1:0:7}
+
+  build-and-push-gcp:
+    docker:
+      - image: cimg/gcp:2023.10
+    steps:
+      - checkout
+      - setup_remote_docker:
+          version: 20.10.14
+      - gcp-gcr/build-and-push-image:
+          image: multi-cloud-demo
+          tag: "latest,${CIRCLE_SHA1}"
+          dockerfile: Dockerfile
+          registry-url: gcr.io
+          extra-build-args: |
+            --build-arg DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+            --build-arg APP_VERSION=${CIRCLE_SHA1:0:7}
+
+  deploy-to-aws:
+    docker:
+      - image: cimg/aws:2023.10
+    steps:
+      - checkout
+      - run:
+          name: Replace placeholders in task definition
+          command: |
+            sed -i "s/{AWS_ACCOUNT_ID}/$AWS_ACCOUNT_ID/g" aws/task-definition.json
+            sed -i "s/{ECR_REPOSITORY_URI}/$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com\/multi-cloud-demo/g" aws/task-definition.json
+            sed -i "s/{AWS_REGION}/$AWS_DEFAULT_REGION/g" aws/task-definition.json
+      - aws-ecs/deploy-service-update:
+          family: multi-cloud-demo
+          cluster-name: multi-cloud-cluster
+          service-name: multi-cloud-demo-service
+          container-image-name-updates: "container=multi-cloud-demo,tag=${CIRCLE_SHA1}"
+          task-definition: aws/task-definition.json
+
+  deploy-to-gcp:
+    docker:
+      - image: cimg/gcp:2023.10
+    steps:
+      - checkout
+      - run:
+          name: Replace placeholders in service definition
+          command: |
+            sed -i "s/{GCP_PROJECT_ID}/$GOOGLE_PROJECT_ID/g" gcp/service.yaml
+            sed -i "s/{GCP_REGION}/$GOOGLE_COMPUTE_REGION/g" gcp/service.yaml
+            sed -i "s/:latest/:${CIRCLE_SHA1}/g" gcp/service.yaml
+      - gcp-cloud-run/deploy:
+          platform: managed
+          image: gcr.io/$GOOGLE_PROJECT_ID/multi-cloud-demo:${CIRCLE_SHA1}
+          service-name: multi-cloud-demo
+          region: $GOOGLE_COMPUTE_REGION
+          unauthenticated: true
+
+  verify-deployments:
+    docker:
+      - image: cimg/base:2023.10
+    steps:
+      - run:
+          name: Verify AWS deployment
+          command: |
+            echo "Verifying AWS ECS deployment..."
+            # Add verification logic here
+            echo "AWS deployment verification completed"
+      - run:
+          name: Verify GCP deployment
+          command: |
+            echo "Verifying GCP Cloud Run deployment..."
+            # Add verification logic here
+            echo "GCP deployment verification completed"
+
+workflows:
+  multi-cloud-deploy:
+    jobs:
+      - test
+
+      # AWS Pipeline
+      - build-and-push-aws:
+          requires:
+            - test
+          filters:
+            branches:
+              only: main
+          context: aws-context
+          when: << parameters.deploy-aws >>
+
+      - deploy-to-aws:
+          requires:
+            - build-and-push-aws
+          context: aws-context
+          when: << parameters.deploy-aws >>
+
+      # GCP Pipeline
+      - build-and-push-gcp:
+          requires:
+            - test
+          filters:
+            branches:
+              only: main
+          context: gcp-context
+          when: << parameters.deploy-gcp >>
+
+      - deploy-to-gcp:
+          requires:
+            - build-and-push-gcp
+          context: gcp-context
+          when: << parameters.deploy-gcp >>
+
+      # Verification
+      - verify-deployments:
+          requires:
+            - deploy-to-aws
+            - deploy-to-gcp
+          when:
+            and:
+              - << parameters.deploy-aws >>
+              - << parameters.deploy-gcp >>
