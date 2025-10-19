@@ -277,7 +277,16 @@ jobs:
 
             if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
               echo "AWS ECS service is active and running"
-              echo "Check AWS Console for service endpoint details"
+
+              # Get public IP from running task
+              TASK_ARN=$(aws ecs list-tasks --cluster multi-cloud-cluster --service-name multi-cloud-demo-service --region $AWS_DEFAULT_REGION --query 'taskArns[0]' --output text)
+              
+              if [ "$TASK_ARN" != "None" ]; then
+                PUBLIC_IP=$(aws ecs describe-tasks --cluster multi-cloud-cluster --tasks $TASK_ARN --region $AWS_DEFAULT_REGION --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text | head -1 | xargs -I {} aws ec2 describe-network-interfaces --network-interface-ids {} --region $AWS_DEFAULT_REGION --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+                if [ "$PUBLIC_IP" != "None" ]; then
+                  echo "Service URL: http://$PUBLIC_IP:3000"
+                fi
+              fi              
             else
               echo "AWS ECS service verification failed"
               exit 1
