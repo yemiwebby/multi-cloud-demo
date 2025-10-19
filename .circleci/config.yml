@@ -67,6 +67,16 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
+      - run:
+          name: Debug environment variables
+          command: |
+            echo "=== Environment Variables Debug ==="
+            echo "GOOGLE_PROJECT_ID: $GOOGLE_PROJECT_ID"
+            echo "GOOGLE_COMPUTE_REGION: $GOOGLE_COMPUTE_REGION"
+            echo "GCLOUD_SERVICE_KEY length: ${#GCLOUD_SERVICE_KEY}"
+            echo "GCLOUD_SERVICE_KEY first 50 chars: ${GCLOUD_SERVICE_KEY:0:50}..."
+            echo "GCLOUD_SERVICE_KEY last 50 chars: ...${GCLOUD_SERVICE_KEY: -50}"
+            echo "=== End Debug ==="
       - gcp-gcr/gcr-auth:
           gcloud-service-key: GCLOUD_SERVICE_KEY
           google-project-id: GOOGLE_PROJECT_ID
