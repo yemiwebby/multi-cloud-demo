@@ -264,7 +264,7 @@ jobs:
           command: |
             source $BASH_ENV
             echo "Verifying AWS ECS deployment..."
-            
+
             # Check service status
             SERVICE_STATUS=$(aws ecs describe-services \
               --cluster multi-cloud-cluster \
@@ -272,13 +272,14 @@ jobs:
               --region $AWS_DEFAULT_REGION \
               --query 'services[0].status' \
               --output text)
-            
+
             echo "ECS Service Status: $SERVICE_STATUS"
-            
+
             if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
-              echo "✅ AWS ECS service is active and running"
+              echo "AWS ECS service is active and running"
+              echo "Check AWS Console for service endpoint details"
             else
-              echo "❌ AWS ECS service verification failed"
+              echo "AWS ECS service verification failed"
               exit 1
             fi
       - run:
@@ -286,24 +287,24 @@ jobs:
           command: |
             source $BASH_ENV
             echo "Verifying GCP Cloud Run deployment..."
-            
+
             # Check service status
             gcloud run services describe multi-cloud-demo \
               --region=$GOOGLE_COMPUTE_REGION \
               --format="value(status.conditions[0].status)" > /tmp/status.txt
-            
+
             GCP_STATUS=$(cat /tmp/status.txt)
             echo "Cloud Run Service Status: $GCP_STATUS"
-            
+
             if [ "$GCP_STATUS" = "True" ]; then
-              echo "✅ GCP Cloud Run service is ready and running"
+              echo "GCP Cloud Run service is ready and running"
               # Get service URL
               SERVICE_URL=$(gcloud run services describe multi-cloud-demo \
                 --region=$GOOGLE_COMPUTE_REGION \
                 --format="value(status.url)")
-              echo "🌐 Service URL: $SERVICE_URL"
+              echo "Service URL: $SERVICE_URL"
             else
-              echo "❌ GCP Cloud Run service verification failed"
+              echo "GCP Cloud Run service verification failed"
               exit 1
             fi
 
@@ -335,7 +336,7 @@ workflows:
           requires:
             - build-and-push-aws
 
-  # GCP only deployment  
+  # GCP only deployment
   gcp-deploy:
     when:
       and:
