@@ -182,11 +182,58 @@ jobs:
             aws ecs register-task-definition \
               --cli-input-json file://aws/task-definition.json \
               --region $AWS_DEFAULT_REGION
-      - aws-ecs/update_service:
-          family: multi-cloud-demo
-          cluster: multi-cloud-cluster
-          service_name: multi-cloud-demo-service
-          container_image_name_updates: "container=multi-cloud-demo,tag=${CIRCLE_SHA1}"
+      - run:
+          name: Create or update ECS service
+          command: |
+            source $BASH_ENV
+            echo "Checking if ECS service exists..."
+            if aws ecs describe-services \
+              --cluster multi-cloud-cluster \
+              --services multi-cloud-demo-service \
+              --region $AWS_DEFAULT_REGION \
+              --query 'services[0].status' \
+              --output text 2>/dev/null | grep -q "ACTIVE"; then
+              echo "Service exists, updating..."
+              aws ecs update-service \
+                --cluster multi-cloud-cluster \
+                --service multi-cloud-demo-service \
+                --task-definition multi-cloud-demo \
+                --region $AWS_DEFAULT_REGION
+            else
+              echo "Service does not exist, creating..."
+              # Get default VPC and subnet
+              VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query 'Vpcs[0].VpcId' --output text --region $AWS_DEFAULT_REGION)
+              SUBNET_ID=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[0].SubnetId' --output text --region $AWS_DEFAULT_REGION)
+              
+              # Create or get security group
+              SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=multi-cloud-demo-sg" --query 'SecurityGroups[0].GroupId' --output text --region $AWS_DEFAULT_REGION 2>/dev/null)
+              if [ "$SG_ID" == "None" ] || [ -z "$SG_ID" ]; then
+                echo "Creating security group..."
+                SG_ID=$(aws ec2 create-security-group \
+                  --group-name multi-cloud-demo-sg \
+                  --description "Security group for multi-cloud demo" \
+                  --vpc-id $VPC_ID \
+                  --region $AWS_DEFAULT_REGION \
+                  --query 'GroupId' --output text)
+                
+                # Allow HTTP traffic
+                aws ec2 authorize-security-group-ingress \
+                  --group-id $SG_ID \
+                  --protocol tcp \
+                  --port 3000 \
+                  --cidr 0.0.0.0/0 \
+                  --region $AWS_DEFAULT_REGION
+              fi
+              
+              aws ecs create-service \
+                --cluster multi-cloud-cluster \
+                --service-name multi-cloud-demo-service \
+                --task-definition multi-cloud-demo \
+                --desired-count 1 \
+                --launch-type FARGATE \
+                --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_ID],securityGroups=[$SG_ID],assignPublicIp=ENABLED}" \
+                --region $AWS_DEFAULT_REGION
+            fi
 
   deploy-to-gcp:
     docker:
