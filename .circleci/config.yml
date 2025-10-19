@@ -68,18 +68,12 @@ jobs:
       - checkout
       - setup_remote_docker
       - run:
-          name: Debug environment variables
+          name: Authenticate GCP
           command: |
-            echo "=== Environment Variables Debug ==="
-            echo "GOOGLE_PROJECT_ID: $GOOGLE_PROJECT_ID"
-            echo "GOOGLE_COMPUTE_REGION: $GOOGLE_COMPUTE_REGION"
-            echo "GCLOUD_SERVICE_KEY length: ${#GCLOUD_SERVICE_KEY}"
-            echo "GCLOUD_SERVICE_KEY first 50 chars: ${GCLOUD_SERVICE_KEY:0:50}..."
-            echo "GCLOUD_SERVICE_KEY last 50 chars: ...${GCLOUD_SERVICE_KEY: -50}"
-            echo "=== End Debug ==="
-      - gcp-gcr/gcr-auth:
-          gcloud-service-key: GCLOUD_SERVICE_KEY
-          google-project-id: GOOGLE_PROJECT_ID
+            echo "$GCLOUD_SERVICE_KEY" > creds.json
+            gcloud auth activate-service-account --key-file=creds.json
+            gcloud config set project "$GOOGLE_PROJECT_ID"
+            gcloud auth configure-docker gcr.io
       - gcp-gcr/build-image:
           image: multi-cloud-demo
           tag: "latest,${CIRCLE_SHA1}"
