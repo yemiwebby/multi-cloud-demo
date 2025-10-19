@@ -47,31 +47,37 @@ jobs:
       - checkout
       - setup_remote_docker
       - run:
-          name: Debug AWS environment variables
+          name: Install AWS CLI
           command: |
-            echo "=== AWS Environment Variables Debug ==="
-            echo "AWS_ACCOUNT_ID: $AWS_ACCOUNT_ID"
-            echo "AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION"
-            echo "AWS_ACCESS_KEY_ID length: ${#AWS_ACCESS_KEY_ID}"
-            echo "AWS_SECRET_ACCESS_KEY length: ${#AWS_SECRET_ACCESS_KEY}"
-            echo "=== End AWS Debug ==="
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
+            aws --version
       - run:
-          name: Set build arguments
+          name: Configure AWS and ECR
           command: |
-            echo "export DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $BASH_ENV
-            echo "export APP_VERSION=${CIRCLE_SHA1:0:7}" >> $BASH_ENV
-      - aws-ecr/build_and_push_image:
-          auth:
-            - aws-cli/setup:
-                aws_access_key_id: AWS_ACCESS_KEY_ID
-                aws_secret_access_key: AWS_SECRET_ACCESS_KEY
-                region: AWS_DEFAULT_REGION
-          account_id: AWS_ACCOUNT_ID
-          region: AWS_DEFAULT_REGION
-          repo: multi-cloud-demo
-          tag: "latest,${CIRCLE_SHA1}"
-          dockerfile: Dockerfile
-          extra_build_args: --build-arg DEPLOYMENT_TIME=$DEPLOYMENT_TIME --build-arg APP_VERSION=$APP_VERSION
+            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+            aws configure set default.region $AWS_DEFAULT_REGION
+            aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - run:
+          name: Build and push Docker image to ECR
+          command: |
+            DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            APP_VERSION=${CIRCLE_SHA1:0:7}
+            ECR_REPO="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/multi-cloud-demo"
+
+            echo "Building Docker image..."
+            docker build \
+              --build-arg DEPLOYMENT_TIME=$DEPLOYMENT_TIME \
+              --build-arg APP_VERSION=$APP_VERSION \
+              -t $ECR_REPO:latest \
+              -t $ECR_REPO:${CIRCLE_SHA1} \
+              .
+
+            echo "Pushing Docker image..."
+            docker push $ECR_REPO:latest
+            docker push $ECR_REPO:${CIRCLE_SHA1}
 
   build-and-push-gcp:
     docker:
