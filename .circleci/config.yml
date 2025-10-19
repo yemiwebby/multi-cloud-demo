@@ -46,6 +46,11 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
+      - run:
+          name: Set build arguments
+          command: |
+            echo "export DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $BASH_ENV
+            echo "export APP_VERSION=${CIRCLE_SHA1:0:7}" >> $BASH_ENV
       - aws-ecr/build_and_push_image:
           auth:
             - aws-cli/setup:
@@ -57,9 +62,7 @@ jobs:
           repo: multi-cloud-demo
           tag: "latest,${CIRCLE_SHA1}"
           dockerfile: Dockerfile
-          extra_build_args: |
-            --build-arg DEPLOYMENT_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
-            --build-arg APP_VERSION=${CIRCLE_SHA1:0:7}
+          extra_build_args: --build-arg DEPLOYMENT_TIME=$DEPLOYMENT_TIME --build-arg APP_VERSION=$APP_VERSION
 
   build-and-push-gcp:
     docker:
