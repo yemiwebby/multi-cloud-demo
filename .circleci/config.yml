@@ -89,6 +89,7 @@ jobs:
             sed -i "s/{ECR_REPOSITORY_URI}/$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com\/multi-cloud-demo/g" aws/task-definition.json
             sed -i "s/{AWS_REGION}/$AWS_DEFAULT_REGION/g" aws/task-definition.json
       - aws-ecs/update_service:
+          family: multi-cloud-demo
           cluster: multi-cloud-cluster
           service-name: multi-cloud-demo-service
           task-definition: aws/task-definition.json
