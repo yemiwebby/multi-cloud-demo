@@ -157,6 +157,15 @@ jobs:
             sed -i "s/{AWS_ACCOUNT_ID}/$AWS_ACCOUNT_ID/g" aws/task-definition.json
             sed -i "s/{ECR_REPOSITORY_URI}/$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com\/multi-cloud-demo/g" aws/task-definition.json
             sed -i "s/{AWS_REGION}/$AWS_DEFAULT_REGION/g" aws/task-definition.json
+            sed -i "s/{CIRCLE_SHA1}/${CIRCLE_SHA1}/g" aws/task-definition.json
+      - run:
+          name: Register task definition
+          command: |
+            source $BASH_ENV
+            echo "Registering task definition..."
+            aws ecs register-task-definition \
+              --cli-input-json file://aws/task-definition.json \
+              --region $AWS_DEFAULT_REGION
       - aws-ecs/update_service:
           family: multi-cloud-demo
           cluster: multi-cloud-cluster
