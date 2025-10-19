@@ -21,8 +21,7 @@ jobs:
       - image: cimg/node:18.20
     steps:
       - checkout
-      - setup_remote_docker:
-          version: 20.10.14
+      - setup_remote_docker
       - restore_cache:
           keys:
             - v1-dependencies-{{ checksum "package.json" }}
@@ -46,8 +45,7 @@ jobs:
       - image: cimg/aws:2023.10
     steps:
       - checkout
-      - setup_remote_docker:
-          version: 20.10.14
+      - setup_remote_docker
       - aws-ecr/build_and_push_image:
           auth:
             - aws-cli/setup:
@@ -68,8 +66,7 @@ jobs:
       - image: cimg/gcp:2023.10
     steps:
       - checkout
-      - setup_remote_docker:
-          version: 20.10.14
+      - setup_remote_docker
       - gcp-gcr/gcr-auth
       - gcp-gcr/build-image:
           image: multi-cloud-demo
