@@ -91,9 +91,8 @@ jobs:
       - aws-ecs/update_service:
           family: multi-cloud-demo
           cluster: multi-cloud-cluster
-          service-name: multi-cloud-demo-service
-          task-definition: aws/task-definition.json
-          container-image-name-updates: "container=multi-cloud-demo,tag=${CIRCLE_SHA1}"
+          service_name: multi-cloud-demo-service
+          container_image_name_updates: "container=multi-cloud-demo,tag=${CIRCLE_SHA1}"
 
   deploy-to-gcp:
     docker:
