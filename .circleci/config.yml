@@ -88,12 +88,12 @@ jobs:
             sed -i "s/{AWS_ACCOUNT_ID}/$AWS_ACCOUNT_ID/g" aws/task-definition.json
             sed -i "s/{ECR_REPOSITORY_URI}/$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com\/multi-cloud-demo/g" aws/task-definition.json
             sed -i "s/{AWS_REGION}/$AWS_DEFAULT_REGION/g" aws/task-definition.json
-      - aws-ecs/deploy-service-update:
+      - aws-ecs/update_service:
           family: multi-cloud-demo
-          cluster-name: multi-cloud-cluster
-          service-name: multi-cloud-demo-service
-          container-image-name-updates: "container=multi-cloud-demo,tag=${CIRCLE_SHA1}"
-          task-definition: aws/task-definition.json
+          cluster_name: multi-cloud-cluster
+          service_name: multi-cloud-demo-service
+          container_image_name_updates: "container=multi-cloud-demo,tag=${CIRCLE_SHA1}"
+          task_definition: aws/task-definition.json
 
   deploy-to-gcp:
     docker:
