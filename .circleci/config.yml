@@ -1,11 +1,47 @@
 version: 2.1
 
 orbs:
-  aws-cli: circleci/aws-cli@4.0.0
-  aws-ecr: circleci/aws-ecr@9.0.4
-  aws-ecs: circleci/aws-ecs@4.0.0
   gcp-gcr: circleci/gcp-gcr@0.16.3
   gcp-cloud-run: circleci/gcp-cloud-run@1.0.2
+
+commands:
+  install-aws-cli:
+    steps:
+      - run:
+          name: Install AWS CLI
+          command: |
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
+            echo 'export PATH=/usr/local/bin:$PATH' >> $BASH_ENV
+            source $BASH_ENV
+            aws --version
+      - run:
+          name: Configure AWS
+          command: |
+            source $BASH_ENV
+            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+            aws configure set default.region $AWS_DEFAULT_REGION
+
+  install-gcloud:
+    steps:
+      - run:
+          name: Install gcloud
+          command: |
+            export CLOUDSDK_CORE_DISABLE_PROMPTS=1
+            export CLOUDSDK_INSTALL_DIR=$HOME
+            curl -sSL https://sdk.cloud.google.com | bash
+            source "$HOME/google-cloud-sdk/path.bash.inc"
+            echo 'source "$HOME/google-cloud-sdk/path.bash.inc"' >> $BASH_ENV
+            gcloud version
+      - run:
+          name: Authenticate GCP
+          command: |
+            source $BASH_ENV
+            echo "$GCLOUD_SERVICE_KEY" > creds.json
+            gcloud auth activate-service-account --key-file=creds.json
+            gcloud config set project "$GOOGLE_PROJECT_ID"
 
 parameters:
   deploy-aws:
@@ -46,22 +82,11 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
+      - install-aws-cli
       - run:
-          name: Install AWS CLI
-          command: |
-            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-            unzip awscliv2.zip
-            sudo ./aws/install
-            echo 'export PATH=/usr/local/bin:$PATH' >> $BASH_ENV
-            source $BASH_ENV
-            aws --version
-      - run:
-          name: Configure AWS and ECR
+          name: Configure ECR authentication
           command: |
             source $BASH_ENV
-            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-            aws configure set default.region $AWS_DEFAULT_REGION
             aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
       - run:
           name: Create ECR repository if it doesn't exist
@@ -100,22 +125,11 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
+      - install-gcloud
       - run:
-          name: Install gcloud.
-          command: |
-            export CLOUDSDK_CORE_DISABLE_PROMPTS=1
-            export CLOUDSDK_INSTALL_DIR=$HOME
-            curl -sSL https://sdk.cloud.google.com | bash
-            source "$HOME/google-cloud-sdk/path.bash.inc"
-            echo 'source "$HOME/google-cloud-sdk/path.bash.inc"' >> $BASH_ENV
-            gcloud version
-      - run:
-          name: Authenticate GCP
+          name: Configure Docker for GCR
           command: |
             source $BASH_ENV
-            echo "$GCLOUD_SERVICE_KEY" > creds.json
-            gcloud auth activate-service-account --key-file=creds.json
-            gcloud config set project "$GOOGLE_PROJECT_ID"
             gcloud auth configure-docker gcr.io
       - gcp-gcr/build-image:
           image: multi-cloud-demo
@@ -135,22 +149,7 @@ jobs:
       - image: cimg/node:18.20
     steps:
       - checkout
-      - run:
-          name: Install AWS CLI
-          command: |
-            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-            unzip awscliv2.zip
-            sudo ./aws/install
-            echo 'export PATH=/usr/local/bin:$PATH' >> $BASH_ENV
-            source $BASH_ENV
-            aws --version
-      - run:
-          name: Configure AWS
-          command: |
-            source $BASH_ENV
-            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-            aws configure set default.region $AWS_DEFAULT_REGION
+      - install-aws-cli
       - run:
           name: Replace placeholders in task definition
           command: |
@@ -240,22 +239,7 @@ jobs:
       - image: cimg/node:18.20
     steps:
       - checkout
-      - run:
-          name: Install gcloud
-          command: |
-            export CLOUDSDK_CORE_DISABLE_PROMPTS=1
-            export CLOUDSDK_INSTALL_DIR=$HOME
-            curl -sSL https://sdk.cloud.google.com | bash
-            source "$HOME/google-cloud-sdk/path.bash.inc"
-            echo 'source "$HOME/google-cloud-sdk/path.bash.inc"' >> $BASH_ENV
-            gcloud version
-      - run:
-          name: Authenticate GCP
-          command: |
-            source $BASH_ENV
-            echo "$GCLOUD_SERVICE_KEY" > creds.json
-            gcloud auth activate-service-account --key-file=creds.json
-            gcloud config set project "$GOOGLE_PROJECT_ID"
+      - install-gcloud
       - run:
           name: Replace placeholders in service definition
           command: |
@@ -273,28 +257,72 @@ jobs:
     docker:
       - image: cimg/node:18.20
     steps:
+      - install-aws-cli
+      - install-gcloud
       - run:
-          name: Verify AWS deployment
+          name: Verify AWS ECS deployment
           command: |
+            source $BASH_ENV
             echo "Verifying AWS ECS deployment..."
-            # Add verification logic here
-            echo "AWS deployment verification completed"
+            
+            # Check service status
+            SERVICE_STATUS=$(aws ecs describe-services \
+              --cluster multi-cloud-cluster \
+              --services multi-cloud-demo-service \
+              --region $AWS_DEFAULT_REGION \
+              --query 'services[0].status' \
+              --output text)
+            
+            echo "ECS Service Status: $SERVICE_STATUS"
+            
+            if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
+              echo "✅ AWS ECS service is active and running"
+            else
+              echo "❌ AWS ECS service verification failed"
+              exit 1
+            fi
       - run:
-          name: Verify GCP deployment
+          name: Verify GCP Cloud Run deployment
           command: |
+            source $BASH_ENV
             echo "Verifying GCP Cloud Run deployment..."
-            # Add verification logic here
-            echo "GCP deployment verification completed"
+            
+            # Check service status
+            gcloud run services describe multi-cloud-demo \
+              --region=$GOOGLE_COMPUTE_REGION \
+              --format="value(status.conditions[0].status)" > /tmp/status.txt
+            
+            GCP_STATUS=$(cat /tmp/status.txt)
+            echo "Cloud Run Service Status: $GCP_STATUS"
+            
+            if [ "$GCP_STATUS" = "True" ]; then
+              echo "✅ GCP Cloud Run service is ready and running"
+              # Get service URL
+              SERVICE_URL=$(gcloud run services describe multi-cloud-demo \
+                --region=$GOOGLE_COMPUTE_REGION \
+                --format="value(status.url)")
+              echo "🌐 Service URL: $SERVICE_URL"
+            else
+              echo "❌ GCP Cloud Run service verification failed"
+              exit 1
+            fi
 
 workflows:
   # Always run tests
-  test-workflow:
+  test-only:
+    when:
+      and:
+        - not: << pipeline.parameters.deploy-aws >>
+        - not: << pipeline.parameters.deploy-gcp >>
     jobs:
       - test
 
-  # AWS deployment workflow
+  # AWS only deployment
   aws-deploy:
-    when: << pipeline.parameters.deploy-aws >>
+    when:
+      and:
+        - << pipeline.parameters.deploy-aws >>
+        - not: << pipeline.parameters.deploy-gcp >>
     jobs:
       - test
       - build-and-push-aws:
@@ -307,9 +335,12 @@ workflows:
           requires:
             - build-and-push-aws
 
-  # GCP deployment workflow
+  # GCP only deployment  
   gcp-deploy:
-    when: << pipeline.parameters.deploy-gcp >>
+    when:
+      and:
+        - << pipeline.parameters.deploy-gcp >>
+        - not: << pipeline.parameters.deploy-aws >>
     jobs:
       - test
       - build-and-push-gcp:
@@ -322,8 +353,8 @@ workflows:
           requires:
             - build-and-push-gcp
 
-  # Verification workflow (only runs when both AWS and GCP are enabled)
-  verification:
+  # Multi-cloud deployment with verification
+  multi-cloud-deploy:
     when:
       and:
         - << pipeline.parameters.deploy-aws >>
@@ -336,15 +367,15 @@ workflows:
           filters:
             branches:
               only: main
-      - deploy-to-aws:
-          requires:
-            - build-and-push-aws
       - build-and-push-gcp:
           requires:
             - test
           filters:
             branches:
               only: main
+      - deploy-to-aws:
+          requires:
+            - build-and-push-aws
       - deploy-to-gcp:
           requires:
             - build-and-push-gcp
