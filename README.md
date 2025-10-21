@@ -50,6 +50,22 @@ A demonstration application showing how to deploy the same Node.js app to both A
 - `DEPLOYMENT_TIME` - When the deployment occurred
 - `PORT` - Server port (default: 3000)
 
+## Prerequisites
+
+Before deploying to the cloud, complete these one-time setup steps:
+
+### AWS Setup
+
+1. **Create IAM user** with programmatic access for CircleCI
+2. **Set up ECS execution role** - See detailed instructions in [`aws/README.md`](aws/README.md)
+3. **Configure CircleCI environment variables** (see deployment section below)
+
+### GCP Setup
+
+1. **Create service account** with necessary permissions for CircleCI
+2. **Enable required APIs** (Cloud Run, Container Registry)
+3. **Configure CircleCI environment variables** (see deployment section below)
+
 ## Deployment
 
 This application is designed to be deployed via the CircleCI pipeline to:

@@ -1,0 +1,38 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Creates the required ecsTaskExecutionRole for ECS Fargate tasks in the multi-cloud demo"
+
+Resources:
+  EcsTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ecsTaskExecutionRole
+      Description: "Allows ECS tasks to pull container images and publish logs"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Tags:
+        - Key: Project
+          Value: multi-cloud-demo
+        - Key: Purpose
+          Value: tutorial
+
+Outputs:
+  RoleArn:
+    Description: "ARN of the created ECS Task Execution Role"
+    Value: !GetAtt EcsTaskExecutionRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-EcsTaskExecutionRoleArn"
+
+  RoleName:
+    Description: "Name of the created ECS Task Execution Role"
+    Value: !Ref EcsTaskExecutionRole
+    Export:
+      Name: !Sub "${AWS::StackName}-EcsTaskExecutionRoleName"

@@ -5,13 +5,15 @@ After creating the `ecsTaskExecutionRole` via CloudFormation, you need to grant 
 ## Step-by-Step Instructions
 
 ### 1. Navigate to IAM User
+
 1. **Log into AWS Console** with admin credentials
-2. **Go to IAM service** 
+2. **Go to IAM service**
 3. **Click "Users"** in the left sidebar
 4. **Find and click** your CircleCI user (e.g., `circleci-multi-cloud`)
 
 ### 2. Create the PassRole Policy
-1. **Click "Permissions" tab** 
+
+1. **Click "Permissions" tab**
 2. **Click "Add permissions"** button
 3. **Select "Create inline policy"** (this creates a policy directly attached to the user)
 4. **Click "JSON" tab** (switch from Visual editor)
@@ -38,7 +40,7 @@ After creating the `ecsTaskExecutionRole` via CloudFormation, you need to grant 
 
 If you prefer to create a standalone policy that can be reused:
 
-1. **Go to IAM** → **Policies** 
+1. **Go to IAM** → **Policies**
 2. **Click "Create policy"**
 3. **JSON tab** → paste the policy above
 4. **Policy name**: `ECSTaskExecutionPassRole`
@@ -57,18 +59,21 @@ If you prefer to create a standalone policy that can be reused:
 ## Verification
 
 After creating the policy, verify it's attached:
+
 1. **Go to your CircleCI user** in IAM
-2. **Permissions tab** 
+2. **Permissions tab**
 3. **Look for** `ECSTaskExecutionPassRole` in the policies list
 
 ## Troubleshooting
 
 **Error: "not authorized to perform: iam:PassRole"**
+
 - Make sure the policy is attached to the correct user
 - Verify the resource ARN matches: `arn:aws:iam::*:role/ecsTaskExecutionRole`
 - Check that the `ecsTaskExecutionRole` exists in IAM
 
 **Policy creation fails**
+
 - Make sure you're logged in with admin credentials
 - Check that you have permission to create IAM policies
 - Verify the JSON syntax is correct (use the exact format above)
@@ -76,6 +81,7 @@ After creating the policy, verify it's attached:
 ## Next Steps
 
 After completing this setup:
+
 1. **Test the CircleCI pipeline** - ECS tasks should now start successfully
 2. **Monitor the deployment** - you should see AWS service URLs in the verification step
 3. **Access your application** - both AWS and GCP services should be running

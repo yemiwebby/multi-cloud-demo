@@ -31,12 +31,13 @@ aws cloudformation deploy \
 
 ### Step 2: Grant PassRole Permission to Your CI User
 
-After creating the role, you need to allow your programmatic access user to "pass" this role to ECS. 
+After creating the role, you need to allow your programmatic access user to "pass" this role to ECS.
 
 **📋 Detailed Instructions:** See [`passrole-setup.md`](passrole-setup.md) for complete step-by-step guide with screenshots and troubleshooting.
 
 **Quick Summary:**
-1. Go to **IAM** → **Users** → find your programmatic access user  
+
+1. Go to **IAM** → **Users** → find your programmatic access user
 2. **Add permissions** → **Create inline policy**
 3. Use the PassRole JSON policy for `ecsTaskExecutionRole`
 4. Name it `ECSTaskExecutionPassRole`
