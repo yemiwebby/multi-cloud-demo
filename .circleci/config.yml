@@ -349,7 +349,99 @@ jobs:
                   echo "Network interface not found for task"
                 fi
               else
-                echo "No running tasks found - deployment may still be in progress"
+                echo "No running tasks found - investigating deployment issues..."
+                
+                # Check service events for errors
+                echo ""
+                echo "=== ECS Service Events (last 10) ==="
+                aws ecs describe-services \
+                  --cluster multi-cloud-cluster \
+                  --services multi-cloud-demo-service \
+                  --region $AWS_DEFAULT_REGION \
+                  --query 'services[0].events[:10].[createdAt,message]' \
+                  --output table || echo "Could not retrieve service events"
+                
+                # Check for stopped tasks and their reasons
+                echo ""
+                echo "=== Recent Stopped Tasks ==="
+                STOPPED_TASKS=$(aws ecs list-tasks \
+                  --cluster multi-cloud-cluster \
+                  --service-name multi-cloud-demo-service \
+                  --region $AWS_DEFAULT_REGION \
+                  --desired-status STOPPED \
+                  --query 'taskArns[:3]' \
+                  --output text)
+                
+                if [ "$STOPPED_TASKS" != "None" ] && [ -n "$STOPPED_TASKS" ]; then
+                  for task in $STOPPED_TASKS; do
+                    echo "Task: $(basename $task)"
+                    aws ecs describe-tasks \
+                      --cluster multi-cloud-cluster \
+                      --tasks $task \
+                      --region $AWS_DEFAULT_REGION \
+                      --query 'tasks[0].{StoppedReason:stoppedReason,StoppedAt:stoppedAt,LastStatus:lastStatus}' \
+                      --output table
+                  done
+                else
+                  echo "No stopped tasks found"
+                fi
+                
+                # Check current service configuration
+                echo ""
+                echo "=== Service Configuration Issues ==="
+                aws ecs describe-services \
+                  --cluster multi-cloud-cluster \
+                  --services multi-cloud-demo-service \
+                  --region $AWS_DEFAULT_REGION \
+                  --query 'services[0].{DesiredCount:desiredCount,RunningCount:runningCount,PendingCount:pendingCount,TaskDefinition:taskDefinition}' \
+                  --output table
+                
+                echo ""
+                # Check if required IAM role exists
+                echo ""
+                echo "=== IAM Role Check ==="
+                if aws iam get-role --role-name ecsTaskExecutionRole --region $AWS_DEFAULT_REGION > /dev/null 2>&1; then
+                  echo "✓ ecsTaskExecutionRole exists"
+                else
+                  echo "✗ ecsTaskExecutionRole missing - this is likely the issue!"
+                  echo "Creating ecsTaskExecutionRole..."
+                  
+                  # Create the role
+                  aws iam create-role \
+                    --role-name ecsTaskExecutionRole \
+                    --assume-role-policy-document '{
+                      "Version": "2012-10-17",
+                      "Statement": [
+                        {
+                          "Effect": "Allow",
+                          "Principal": {
+                            "Service": "ecs-tasks.amazonaws.com"
+                          },
+                          "Action": "sts:AssumeRole"
+                        }
+                      ]
+                    }' \
+                    --region $AWS_DEFAULT_REGION || echo "Role creation failed"
+                  
+                  # Attach the policy
+                  aws iam attach-role-policy \
+                    --role-name ecsTaskExecutionRole \
+                    --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy \
+                    --region $AWS_DEFAULT_REGION || echo "Policy attachment failed"
+                  
+                  echo "Role created - you may need to redeploy the service"
+                fi
+                
+                echo ""
+                echo "TROUBLESHOOTING: Service is ACTIVE but no tasks are running."
+                echo "This usually indicates one of these issues:"
+                echo "1. Task definition has invalid configuration (CPU/memory/IAM role)"
+                echo "2. Container image cannot be pulled from ECR"
+                echo "3. Network configuration issues (subnets/security groups)"
+                echo "4. Resource constraints (insufficient capacity)"
+                echo "5. IAM permissions issues"
+                echo ""
+                echo "Check the service events above for specific error messages."
               fi             
             else
               echo "FAILED: AWS ECS service verification failed"
