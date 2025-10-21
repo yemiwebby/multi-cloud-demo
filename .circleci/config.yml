@@ -285,15 +285,25 @@ jobs:
             if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
               echo "SUCCESS: AWS ECS service is active and running"
 
-              # Get running task ARN
+              # Get running task ARN - wait for tasks to start if needed
               echo "Getting task details..."
-              TASK_ARN=$(aws ecs list-tasks \
-                --cluster multi-cloud-cluster \
-                --service-name multi-cloud-demo-service \
-                --region $AWS_DEFAULT_REGION \
-                --desired-status RUNNING \
-                --query 'taskArns[0]' \
-                --output text)
+              TASK_ARN=""
+              for i in {1..6}; do
+                TASK_ARN=$(aws ecs list-tasks \
+                  --cluster multi-cloud-cluster \
+                  --service-name multi-cloud-demo-service \
+                  --region $AWS_DEFAULT_REGION \
+                  --desired-status RUNNING \
+                  --query 'taskArns[0]' \
+                  --output text)
+                
+                if [ "$TASK_ARN" != "None" ] && [ -n "$TASK_ARN" ]; then
+                  break
+                else
+                  echo "Waiting for task to start... (attempt $i/6)"
+                  sleep 10
+                fi
+              done
               
               if [ "$TASK_ARN" != "None" ] && [ -n "$TASK_ARN" ]; then
                 echo "Found running task: $(basename $TASK_ARN)"
@@ -404,7 +414,7 @@ jobs:
               --region $AWS_DEFAULT_REGION \
               --desired-status RUNNING \
               --query 'taskArns[0]' \
-              --output text)
+              --output text 2>/dev/null || echo "None")
             
             if [ "$TASK_ARN" != "None" ] && [ -n "$TASK_ARN" ]; then
               ENI_ID=$(aws ecs describe-tasks \
@@ -444,7 +454,6 @@ jobs:
             echo "- Implement blue-green or canary deployments"
             echo "- Add monitoring and logging"
             echo ""
-            fi
 
 workflows:
   # Always run tests
