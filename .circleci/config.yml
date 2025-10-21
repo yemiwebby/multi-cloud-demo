@@ -166,12 +166,12 @@ jobs:
           name: Ensure ECS cluster is active
           command: |
             echo "Checking ECS cluster 'multi-cloud-cluster' status..."
-            
+
             # Check if cluster exists and get its status
             CLUSTER_STATUS=$(aws ecs describe-clusters --clusters multi-cloud-cluster --region $AWS_DEFAULT_REGION --query 'clusters[0].status' --output text 2>/dev/null || echo "NOTFOUND")
-            
+
             echo "Current cluster status: $CLUSTER_STATUS"
-            
+
             if [ "$CLUSTER_STATUS" = "NOTFOUND" ] || [ "$CLUSTER_STATUS" = "None" ]; then
               echo "Cluster doesn't exist. Creating ECS cluster..."
               aws ecs create-cluster --cluster-name multi-cloud-cluster --region $AWS_DEFAULT_REGION
@@ -193,10 +193,34 @@ jobs:
               aws ecs create-cluster --cluster-name multi-cloud-cluster --region $AWS_DEFAULT_REGION
               echo "ECS cluster 'multi-cloud-cluster' recreated successfully!"
             fi
-            
+
             # Wait for cluster to be ready
             echo "Waiting for cluster to be fully active..."
             sleep 10
+      - run:
+          name: Create CloudWatch log group
+          command: |
+            source $BASH_ENV
+            echo "Creating CloudWatch log group for ECS tasks..."
+            # Check if log group exists
+            if ! aws logs describe-log-groups \
+              --log-group-name-prefix "/ecs/multi-cloud-demo" \
+              --region $AWS_DEFAULT_REGION \
+              --query 'logGroups[?logGroupName==`/ecs/multi-cloud-demo`]' \
+              --output text | grep -q "/ecs/multi-cloud-demo"; then
+              echo "Log group doesn't exist. Creating /ecs/multi-cloud-demo..."
+              aws logs create-log-group \
+                --log-group-name "/ecs/multi-cloud-demo" \
+                --region $AWS_DEFAULT_REGION
+              # Set retention policy (optional - 7 days to save costs)
+              aws logs put-retention-policy \
+                --log-group-name "/ecs/multi-cloud-demo" \
+                --retention-in-days 7 \
+                --region $AWS_DEFAULT_REGION
+              echo "CloudWatch log group created successfully!"
+            else
+              echo "CloudWatch log group /ecs/multi-cloud-demo already exists."
+            fi
       - run:
           name: Register task definition
           command: |
@@ -216,9 +240,9 @@ jobs:
               --region $AWS_DEFAULT_REGION \
               --query 'services[0].status' \
               --output text 2>/dev/null || echo "NOTFOUND")
-            
+
             echo "Service status: $SERVICE_STATUS"
-            
+
             if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
               echo "Service exists and is active, updating..."
               aws ecs update-service \
