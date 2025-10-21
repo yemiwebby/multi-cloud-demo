@@ -1,28 +1,17 @@
 version: 2.1
 
 orbs:
+  aws-cli: circleci/aws-cli@4.0.0
   gcp-gcr: circleci/gcp-gcr@0.16.3
   gcp-cloud-run: circleci/gcp-cloud-run@1.0.2
 
 commands:
-  install-aws-cli:
+  setup-aws:
     steps:
-      - run:
-          name: Install AWS CLI
-          command: |
-            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-            unzip awscliv2.zip
-            sudo ./aws/install
-            echo 'export PATH=/usr/local/bin:$PATH' >> $BASH_ENV
-            source $BASH_ENV
-            aws --version
-      - run:
-          name: Configure AWS
-          command: |
-            source $BASH_ENV
-            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-            aws configure set default.region $AWS_DEFAULT_REGION
+      - aws-cli/setup:
+          aws-access-key-id: AWS_ACCESS_KEY_ID
+          aws-secret-access-key: AWS_SECRET_ACCESS_KEY
+          aws-region: AWS_DEFAULT_REGION
 
   install-gcloud:
     steps:
@@ -82,16 +71,14 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
-      - install-aws-cli
+      - setup-aws
       - run:
           name: Configure ECR authentication
           command: |
-            source $BASH_ENV
             aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
       - run:
           name: Create ECR repository if it doesn't exist
           command: |
-            source $BASH_ENV
             echo "Checking if ECR repository 'multi-cloud-demo' exists..."
             if ! aws ecr describe-repositories --repository-names multi-cloud-demo --region $AWS_DEFAULT_REGION > /dev/null 2>&1; then
               echo "Repository doesn't exist. Creating ECR repository..."
@@ -149,7 +136,7 @@ jobs:
       - image: cimg/node:18.20
     steps:
       - checkout
-      - install-aws-cli
+      - setup-aws
       - run:
           name: Replace placeholders in task definition
           command: |
@@ -160,7 +147,6 @@ jobs:
       - run:
           name: Create ECS cluster if it doesn't exist
           command: |
-            source $BASH_ENV
             echo "Checking if ECS cluster 'multi-cloud-cluster' exists..."
             if ! aws ecs describe-clusters --clusters multi-cloud-cluster --region $AWS_DEFAULT_REGION --query 'clusters[0].status' --output text 2>/dev/null | grep -q "ACTIVE"; then
               echo "Cluster doesn't exist. Creating ECS cluster..."
@@ -176,7 +162,6 @@ jobs:
       - run:
           name: Register task definition
           command: |
-            source $BASH_ENV
             echo "Registering task definition..."
             aws ecs register-task-definition \
               --cli-input-json file://aws/task-definition.json \
@@ -184,7 +169,6 @@ jobs:
       - run:
           name: Create or update ECS service
           command: |
-            source $BASH_ENV
             echo "Checking if ECS service exists..."
             if aws ecs describe-services \
               --cluster multi-cloud-cluster \
@@ -257,19 +241,18 @@ jobs:
     # This job verifies both AWS and GCP deployments are successful
     # For AWS: Shows the public IP and port (tutorial approach)
     # For GCP: Shows the Cloud Run URL
-    # 
+    #
     # ADVANCED: For production AWS deployments, consider adding an Application Load Balancer (ALB)
     # to get a stable DNS name instead of relying on task public IPs which can change.
     # See AWS documentation: https://docs.aws.amazon.com/elasticloadbalancing/latest/application/
     docker:
       - image: cimg/node:18.20
     steps:
-      - install-aws-cli
+      - setup-aws
       - install-gcloud
       - run:
           name: Verify AWS ECS deployment
           command: |
-            source $BASH_ENV
             echo "Verifying AWS ECS deployment..."
 
             # Check service status
@@ -403,45 +386,35 @@ jobs:
                 if aws iam get-role --role-name ecsTaskExecutionRole --region $AWS_DEFAULT_REGION > /dev/null 2>&1; then
                   echo "✓ ecsTaskExecutionRole exists"
                 else
-                  echo "✗ ecsTaskExecutionRole missing - this is likely the issue!"
-                  echo "Creating ecsTaskExecutionRole..."
-                  
-                  # Create the role
-                  aws iam create-role \
-                    --role-name ecsTaskExecutionRole \
-                    --assume-role-policy-document '{
-                      "Version": "2012-10-17",
-                      "Statement": [
-                        {
-                          "Effect": "Allow",
-                          "Principal": {
-                            "Service": "ecs-tasks.amazonaws.com"
-                          },
-                          "Action": "sts:AssumeRole"
-                        }
-                      ]
-                    }' \
-                    --region $AWS_DEFAULT_REGION || echo "Role creation failed"
-                  
-                  # Attach the policy
-                  aws iam attach-role-policy \
-                    --role-name ecsTaskExecutionRole \
-                    --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy \
-                    --region $AWS_DEFAULT_REGION || echo "Policy attachment failed"
-                  
-                  echo "Role created - you may need to redeploy the service"
+                  echo "✗ ecsTaskExecutionRole is missing!"
+                  echo ""
+                  echo "REQUIRED SETUP: You need to create the ECS Task Execution Role"
+                  echo "This is a one-time setup step that requires admin privileges."
+                  echo ""
+                  echo "INSTRUCTIONS:"
+                  echo "1. See aws/README.md for detailed setup instructions"
+                  echo "2. Use aws/ecs-task-execution-role.yml CloudFormation template"
+                  echo "3. Grant PassRole permission to your CI user"
+                  echo "4. Re-run this deployment"
+                  echo ""
+                  echo "This role allows ECS to pull container images and write logs."
                 fi
                 
                 echo ""
                 echo "TROUBLESHOOTING: Service is ACTIVE but no tasks are running."
-                echo "This usually indicates one of these issues:"
-                echo "1. Task definition has invalid configuration (CPU/memory/IAM role)"
+                echo ""
+                echo "MOST COMMON CAUSES:"
+                echo "1. Missing ecsTaskExecutionRole (see IAM Role Check above)"
                 echo "2. Container image cannot be pulled from ECR"
                 echo "3. Network configuration issues (subnets/security groups)"
                 echo "4. Resource constraints (insufficient capacity)"
-                echo "5. IAM permissions issues"
+                echo "5. Task definition configuration errors"
                 echo ""
-                echo "Check the service events above for specific error messages."
+                echo "NEXT STEPS:"
+                echo "- If role is missing: Follow instructions in aws/README.md"
+                echo "- Check service events above for specific error messages"
+                echo "- Verify ECR repository contains the expected image"
+                echo ""
               fi             
             else
               echo "FAILED: AWS ECS service verification failed"
@@ -497,9 +470,8 @@ jobs:
             echo ""
             echo "Your application is now running on both clouds:"
             echo ""
-            
+
             # Get AWS URL again for summary
-            source $BASH_ENV
             TASK_ARN=$(aws ecs list-tasks \
               --cluster multi-cloud-cluster \
               --service-name multi-cloud-demo-service \
@@ -507,7 +479,7 @@ jobs:
               --desired-status RUNNING \
               --query 'taskArns[0]' \
               --output text 2>/dev/null || echo "None")
-            
+
             if [ "$TASK_ARN" != "None" ] && [ -n "$TASK_ARN" ]; then
               ENI_ID=$(aws ecs describe-tasks \
                 --cluster multi-cloud-cluster \
@@ -530,9 +502,8 @@ jobs:
                 fi
               fi
             fi
-            
+
             # Get GCP URL for summary
-            source $BASH_ENV
             GCP_URL=$(gcloud run services describe multi-cloud-demo \
               --region=$GOOGLE_COMPUTE_REGION \
               --format="value(status.url)" 2>/dev/null || echo "URL not available")
