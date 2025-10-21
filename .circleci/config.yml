@@ -212,12 +212,19 @@ jobs:
               aws logs create-log-group \
                 --log-group-name "/ecs/multi-cloud-demo" \
                 --region $AWS_DEFAULT_REGION
-              # Set retention policy (optional - 7 days to save costs)
-              aws logs put-retention-policy \
+              echo "CloudWatch log group created successfully!"
+              
+              # Try to set retention policy (optional - continues on failure)
+              echo "Attempting to set 7-day retention policy..."
+              if aws logs put-retention-policy \
                 --log-group-name "/ecs/multi-cloud-demo" \
                 --retention-in-days 7 \
-                --region $AWS_DEFAULT_REGION
-              echo "CloudWatch log group created successfully!"
+                --region $AWS_DEFAULT_REGION 2>/dev/null; then
+                echo "Retention policy set to 7 days."
+              else
+                echo "Note: Could not set retention policy (insufficient permissions). Log group created without retention policy."
+                echo "You can manually set the retention policy in the AWS Console if desired."
+              fi
             else
               echo "CloudWatch log group /ecs/multi-cloud-demo already exists."
             fi
