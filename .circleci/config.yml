@@ -163,21 +163,40 @@ jobs:
             sed -i "s/{AWS_REGION}/$AWS_DEFAULT_REGION/g" aws/task-definition.json
             sed -i "s/{CIRCLE_SHA1}/${CIRCLE_SHA1}/g" aws/task-definition.json
       - run:
-          name: Create ECS cluster if it doesn't exist
+          name: Ensure ECS cluster is active
           command: |
-            source $BASH_ENV
-            echo "Checking if ECS cluster 'multi-cloud-cluster' exists..."
-            if ! aws ecs describe-clusters --clusters multi-cloud-cluster --region $AWS_DEFAULT_REGION --query 'clusters[0].status' --output text 2>/dev/null | grep -q "ACTIVE"; then
+            echo "Checking ECS cluster 'multi-cloud-cluster' status..."
+            
+            # Check if cluster exists and get its status
+            CLUSTER_STATUS=$(aws ecs describe-clusters --clusters multi-cloud-cluster --region $AWS_DEFAULT_REGION --query 'clusters[0].status' --output text 2>/dev/null || echo "NOTFOUND")
+            
+            echo "Current cluster status: $CLUSTER_STATUS"
+            
+            if [ "$CLUSTER_STATUS" = "NOTFOUND" ] || [ "$CLUSTER_STATUS" = "None" ]; then
               echo "Cluster doesn't exist. Creating ECS cluster..."
               aws ecs create-cluster --cluster-name multi-cloud-cluster --region $AWS_DEFAULT_REGION
               echo "ECS cluster 'multi-cloud-cluster' created successfully!"
-              
-              # Wait a moment for cluster to be ready
-              echo "Waiting for cluster to be active..."
-              sleep 10
+            elif [ "$CLUSTER_STATUS" = "INACTIVE" ]; then
+              echo "Cluster exists but is INACTIVE. Deleting and recreating..."
+              aws ecs delete-cluster --cluster multi-cloud-cluster --region $AWS_DEFAULT_REGION
+              echo "Waiting for cluster deletion to complete..."
+              sleep 5
+              echo "Creating new ECS cluster..."
+              aws ecs create-cluster --cluster-name multi-cloud-cluster --region $AWS_DEFAULT_REGION
+              echo "ECS cluster 'multi-cloud-cluster' recreated successfully!"
+            elif [ "$CLUSTER_STATUS" = "ACTIVE" ]; then
+              echo "ECS cluster 'multi-cloud-cluster' is already active."
             else
-              echo "ECS cluster 'multi-cloud-cluster' already exists and is active."
+              echo "Unknown cluster status: $CLUSTER_STATUS. Attempting to recreate..."
+              aws ecs delete-cluster --cluster multi-cloud-cluster --region $AWS_DEFAULT_REGION 2>/dev/null || true
+              sleep 5
+              aws ecs create-cluster --cluster-name multi-cloud-cluster --region $AWS_DEFAULT_REGION
+              echo "ECS cluster 'multi-cloud-cluster' recreated successfully!"
             fi
+            
+            # Wait for cluster to be ready
+            echo "Waiting for cluster to be fully active..."
+            sleep 10
       - run:
           name: Register task definition
           command: |
@@ -190,14 +209,18 @@ jobs:
           name: Create or update ECS service
           command: |
             source $BASH_ENV
-            echo "Checking if ECS service exists..."
-            if aws ecs describe-services \
+            echo "Checking if ECS service exists and is active..."
+            SERVICE_STATUS=$(aws ecs describe-services \
               --cluster multi-cloud-cluster \
               --services multi-cloud-demo-service \
               --region $AWS_DEFAULT_REGION \
               --query 'services[0].status' \
-              --output text 2>/dev/null | grep -q "ACTIVE"; then
-              echo "Service exists, updating..."
+              --output text 2>/dev/null || echo "NOTFOUND")
+            
+            echo "Service status: $SERVICE_STATUS"
+            
+            if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
+              echo "Service exists and is active, updating..."
               aws ecs update-service \
                 --cluster multi-cloud-cluster \
                 --service multi-cloud-demo-service \
