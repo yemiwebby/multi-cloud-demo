@@ -327,7 +327,7 @@ jobs:
               --output text)
 
             if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
-              echo "✅ AWS ECS service is active and running"
+              echo "AWS ECS service is active and running"
               echo ""
               echo "Access your AWS application:"
               echo "1. Go to ECS Console > Clusters > multi-cloud-cluster"
@@ -336,7 +336,7 @@ jobs:
               echo "4. Access via http://[PUBLIC_IP]:3000"
               echo ""
             else
-              echo "❌ AWS ECS service verification failed"
+              echo "AWS ECS service verification failed"
               exit 1
             fi
       - run:
@@ -353,19 +353,19 @@ jobs:
               SERVICE_URL=$(gcloud run services describe multi-cloud-demo \
                 --region=$GOOGLE_COMPUTE_REGION \
                 --format="value(status.url)")
-              echo "✅ GCP Cloud Run service is ready and running"
+              echo "GCP Cloud Run service is ready and running"
               echo ""
               echo "Access your GCP application:"
               echo "Service URL: $SERVICE_URL"
               echo ""
             else
-              echo "❌ GCP Cloud Run service verification failed"
+              echo "GCP Cloud Run service verification failed"
               exit 1
             fi
       - run:
           name: Deployment summary
           command: |
-            echo "🎉 Multi-cloud deployment completed successfully!"
+            echo "Multi-cloud deployment completed successfully!"
             echo ""
             echo "Your application is now running on both:"
             echo "• AWS ECS Fargate (check console for public IP)"
