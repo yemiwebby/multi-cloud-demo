@@ -1,16 +1,19 @@
 version: 2.1
 
+# CircleCI Orbs for cloud deployments
 orbs:
   gcp-gcr: circleci/gcp-gcr@0.16.3
   gcp-cloud-run: circleci/gcp-cloud-run@1.0.2
 
+# Reusable commands for AWS and GCP setup
 commands:
   install-aws-cli:
+    description: "Install AWS CLI v2 in temporary directory to avoid file conflicts"
     steps:
       - run:
           name: Install AWS CLI
           command: |
-            # Create a temporary directory to avoid conflicts with existing files
+            # Install in temporary directory to avoid conflicts with project files
             mkdir -p /tmp/awscli-install
             cd /tmp/awscli-install
             curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
@@ -30,6 +33,7 @@ commands:
             aws configure set default.region $AWS_DEFAULT_REGION
 
   install-gcloud:
+    description: "Install and configure Google Cloud SDK"
     steps:
       - run:
           name: Install gcloud
@@ -48,6 +52,7 @@ commands:
             gcloud auth activate-service-account --key-file=creds.json
             gcloud config set project "$GOOGLE_PROJECT_ID"
 
+# Pipeline parameters for flexible deployment options
 parameters:
   deploy-aws:
     type: boolean
@@ -57,6 +62,7 @@ parameters:
     default: true
 
 jobs:
+  # Test job: Run unit tests and verify Docker build
   test:
     docker:
       - image: cimg/node:18.20
@@ -81,6 +87,7 @@ jobs:
           name: Test Docker build
           command: docker build -t multi-cloud-demo:test .
 
+  # AWS: Build and push Docker image to ECR
   build-and-push-aws:
     docker:
       - image: cimg/node:18.20
@@ -94,16 +101,16 @@ jobs:
             source $BASH_ENV
             aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
       - run:
-          name: Create ECR repository if it doesn't exist
+          name: Create ECR repository if needed
           command: |
             source $BASH_ENV
             echo "Checking if ECR repository 'multi-cloud-demo' exists..."
             if ! aws ecr describe-repositories --repository-names multi-cloud-demo --region $AWS_DEFAULT_REGION > /dev/null 2>&1; then
-              echo "Repository doesn't exist. Creating ECR repository..."
+              echo "Creating ECR repository..."
               aws ecr create-repository --repository-name multi-cloud-demo --region $AWS_DEFAULT_REGION
-              echo "ECR repository 'multi-cloud-demo' created successfully!"
+              echo "ECR repository created successfully!"
             else
-              echo "ECR repository 'multi-cloud-demo' already exists."
+              echo "ECR repository already exists."
             fi
       - run:
           name: Build and push Docker image to ECR
@@ -124,6 +131,7 @@ jobs:
             docker push $ECR_REPO:latest
             docker push $ECR_REPO:${CIRCLE_SHA1}
 
+  # GCP: Build and push Docker image to GCR
   build-and-push-gcp:
     docker:
       - image: cimg/node:18.20
@@ -149,6 +157,7 @@ jobs:
           tag: "latest,${CIRCLE_SHA1}"
           registry-url: gcr.io
 
+  # AWS: Deploy to ECS Fargate
   deploy-to-aws:
     docker:
       - image: cimg/node:18.20
@@ -165,74 +174,60 @@ jobs:
       - run:
           name: Ensure ECS cluster is active
           command: |
-            echo "Checking ECS cluster 'multi-cloud-cluster' status..."
-
-            # Check if cluster exists and get its status
+            echo "Checking ECS cluster status..."
             CLUSTER_STATUS=$(aws ecs describe-clusters --clusters multi-cloud-cluster --region $AWS_DEFAULT_REGION --query 'clusters[0].status' --output text 2>/dev/null || echo "NOTFOUND")
-
             echo "Current cluster status: $CLUSTER_STATUS"
 
             if [ "$CLUSTER_STATUS" = "NOTFOUND" ] || [ "$CLUSTER_STATUS" = "None" ]; then
-              echo "Cluster doesn't exist. Creating ECS cluster..."
+              echo "Creating ECS cluster..."
               aws ecs create-cluster --cluster-name multi-cloud-cluster --region $AWS_DEFAULT_REGION
-              echo "ECS cluster 'multi-cloud-cluster' created successfully!"
             elif [ "$CLUSTER_STATUS" = "INACTIVE" ]; then
-              echo "Cluster exists but is INACTIVE. Deleting and recreating..."
+              echo "Cluster is INACTIVE. Recreating..."
               aws ecs delete-cluster --cluster multi-cloud-cluster --region $AWS_DEFAULT_REGION
-              echo "Waiting for cluster deletion to complete..."
               sleep 5
-              echo "Creating new ECS cluster..."
               aws ecs create-cluster --cluster-name multi-cloud-cluster --region $AWS_DEFAULT_REGION
-              echo "ECS cluster 'multi-cloud-cluster' recreated successfully!"
             elif [ "$CLUSTER_STATUS" = "ACTIVE" ]; then
-              echo "ECS cluster 'multi-cloud-cluster' is already active."
+              echo "ECS cluster is already active."
             else
-              echo "Unknown cluster status: $CLUSTER_STATUS. Attempting to recreate..."
+              echo "Unknown status. Recreating cluster..."
               aws ecs delete-cluster --cluster multi-cloud-cluster --region $AWS_DEFAULT_REGION 2>/dev/null || true
               sleep 5
               aws ecs create-cluster --cluster-name multi-cloud-cluster --region $AWS_DEFAULT_REGION
-              echo "ECS cluster 'multi-cloud-cluster' recreated successfully!"
             fi
-
-            # Wait for cluster to be ready
-            echo "Waiting for cluster to be fully active..."
+            echo "ECS cluster is ready."
             sleep 10
       - run:
           name: Create CloudWatch log group
           command: |
             source $BASH_ENV
-            echo "Creating CloudWatch log group for ECS tasks..."
-            # Check if log group exists
+            echo "Setting up CloudWatch logging..."
             if ! aws logs describe-log-groups \
               --log-group-name-prefix "/ecs/multi-cloud-demo" \
               --region $AWS_DEFAULT_REGION \
               --query 'logGroups[?logGroupName==`/ecs/multi-cloud-demo`]' \
               --output text | grep -q "/ecs/multi-cloud-demo"; then
-              echo "Log group doesn't exist. Creating /ecs/multi-cloud-demo..."
+              echo "Creating log group /ecs/multi-cloud-demo..."
               aws logs create-log-group \
                 --log-group-name "/ecs/multi-cloud-demo" \
                 --region $AWS_DEFAULT_REGION
-              echo "CloudWatch log group created successfully!"
               
-              # Try to set retention policy (optional - continues on failure)
-              echo "Attempting to set 7-day retention policy..."
+              # Try to set retention policy (optional)
               if aws logs put-retention-policy \
                 --log-group-name "/ecs/multi-cloud-demo" \
                 --retention-in-days 7 \
                 --region $AWS_DEFAULT_REGION 2>/dev/null; then
                 echo "Retention policy set to 7 days."
               else
-                echo "Note: Could not set retention policy (insufficient permissions). Log group created without retention policy."
-                echo "You can manually set the retention policy in the AWS Console if desired."
+                echo "Note: Retention policy not set (insufficient permissions)."
               fi
             else
-              echo "CloudWatch log group /ecs/multi-cloud-demo already exists."
+              echo "CloudWatch log group already exists."
             fi
       - run:
           name: Register task definition
           command: |
             source $BASH_ENV
-            echo "Registering task definition..."
+            echo "Registering ECS task definition..."
             aws ecs register-task-definition \
               --cli-input-json file://aws/task-definition.json \
               --region $AWS_DEFAULT_REGION
@@ -240,7 +235,7 @@ jobs:
           name: Create or update ECS service
           command: |
             source $BASH_ENV
-            echo "Checking if ECS service exists and is active..."
+            echo "Managing ECS service..."
             SERVICE_STATUS=$(aws ecs describe-services \
               --cluster multi-cloud-cluster \
               --services multi-cloud-demo-service \
@@ -248,17 +243,15 @@ jobs:
               --query 'services[0].status' \
               --output text 2>/dev/null || echo "NOTFOUND")
 
-            echo "Service status: $SERVICE_STATUS"
-
             if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
-              echo "Service exists and is active, updating..."
+              echo "Updating existing service..."
               aws ecs update-service \
                 --cluster multi-cloud-cluster \
                 --service multi-cloud-demo-service \
                 --task-definition multi-cloud-demo \
                 --region $AWS_DEFAULT_REGION
             else
-              echo "Service does not exist, creating..."
+              echo "Creating new service..."
               # Get default VPC and subnet
               VPC_ID=$(aws ec2 describe-vpcs --filters "Name=is-default,Values=true" --query 'Vpcs[0].VpcId' --output text --region $AWS_DEFAULT_REGION)
               SUBNET_ID=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[0].SubnetId' --output text --region $AWS_DEFAULT_REGION)
@@ -274,7 +267,7 @@ jobs:
                   --region $AWS_DEFAULT_REGION \
                   --query 'GroupId' --output text)
                 
-                # Allow HTTP traffic
+                # Allow HTTP traffic on port 3000
                 aws ec2 authorize-security-group-ingress \
                   --group-id $SG_ID \
                   --protocol tcp \
@@ -283,6 +276,7 @@ jobs:
                   --region $AWS_DEFAULT_REGION
               fi
               
+              # Create ECS service
               aws ecs create-service \
                 --cluster multi-cloud-cluster \
                 --service-name multi-cloud-demo-service \
@@ -293,6 +287,7 @@ jobs:
                 --region $AWS_DEFAULT_REGION
             fi
 
+  # GCP: Deploy to Cloud Run
   deploy-to-gcp:
     docker:
       - image: cimg/node:18.20
@@ -312,6 +307,7 @@ jobs:
           region: $GOOGLE_COMPUTE_REGION
           unauthenticated: true
 
+  # Verify both deployments are successful
   verify-deployments:
     docker:
       - image: cimg/node:18.20
@@ -323,8 +319,6 @@ jobs:
           command: |
             source $BASH_ENV
             echo "Verifying AWS ECS deployment..."
-
-            # Check service status
             SERVICE_STATUS=$(aws ecs describe-services \
               --cluster multi-cloud-cluster \
               --services multi-cloud-demo-service \
@@ -332,17 +326,17 @@ jobs:
               --query 'services[0].status' \
               --output text)
 
-            echo "ECS Service Status: $SERVICE_STATUS"
-
             if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
-              echo "AWS ECS service is active and running"
-              echo "Access your application through the AWS Console:"
+              echo "✅ AWS ECS service is active and running"
+              echo ""
+              echo "Access your AWS application:"
               echo "1. Go to ECS Console > Clusters > multi-cloud-cluster"
               echo "2. Click on the service > Tasks tab"
               echo "3. Click on the running task to find the public IP"
               echo "4. Access via http://[PUBLIC_IP]:3000"
+              echo ""
             else
-              echo "AWS ECS service verification failed"
+              echo "❌ AWS ECS service verification failed"
               exit 1
             fi
       - run:
@@ -350,29 +344,38 @@ jobs:
           command: |
             source $BASH_ENV
             echo "Verifying GCP Cloud Run deployment..."
-
-            # Check service status
             gcloud run services describe multi-cloud-demo \
               --region=$GOOGLE_COMPUTE_REGION \
               --format="value(status.conditions[0].status)" > /tmp/status.txt
 
             GCP_STATUS=$(cat /tmp/status.txt)
-            echo "Cloud Run Service Status: $GCP_STATUS"
-
             if [ "$GCP_STATUS" = "True" ]; then
-              echo "GCP Cloud Run service is ready and running"
-              # Get service URL
               SERVICE_URL=$(gcloud run services describe multi-cloud-demo \
                 --region=$GOOGLE_COMPUTE_REGION \
                 --format="value(status.url)")
+              echo "✅ GCP Cloud Run service is ready and running"
+              echo ""
+              echo "Access your GCP application:"
               echo "Service URL: $SERVICE_URL"
+              echo ""
             else
-              echo "GCP Cloud Run service verification failed"
+              echo "❌ GCP Cloud Run service verification failed"
               exit 1
             fi
+      - run:
+          name: Deployment summary
+          command: |
+            echo "🎉 Multi-cloud deployment completed successfully!"
+            echo ""
+            echo "Your application is now running on both:"
+            echo "• AWS ECS Fargate (check console for public IP)"
+            echo "• GCP Cloud Run (URL shown above)"
+            echo ""
+            echo "Both services are running the same containerized Node.js app!"
 
+# Workflow definitions for different deployment scenarios
 workflows:
-  # Always run tests
+  # Test only (no deployment)
   test-only:
     when:
       and:
@@ -417,7 +420,7 @@ workflows:
           requires:
             - build-and-push-gcp
 
-  # Multi-cloud deployment with verification
+  # Multi-cloud deployment (default)
   multi-cloud-deploy:
     when:
       and:
